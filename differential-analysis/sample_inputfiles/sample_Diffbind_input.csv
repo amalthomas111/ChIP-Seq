@@ -1,0 +1,5 @@
+SampleID,Tissue,Factor,Replicate,Condition,Peaks,PeakCaller,bamReads
+68H,Brx68,atac,1,H,../peaks/q1e4/consensus/68H_consist.bed,bed,../bam/68H.sorted.chr.nodup.filt.bam
+68HR,Brx68,atac,2,H,../peaks/q1e4/consensus/68HR_consist.bed,bed,../bam/68HR.sorted.chr.nodup.filt.bam
+68N3,Brx68,atac,1,N3,../peaks/q1e4/consensus/68N3_consist.bed,bed,../bam/68N3.sorted.chr.nodup.filt.bam
+68N3R,Brx68,atac,2,N3,../peaks/q1e4/consensus/68N3R_consist.bed,bed,../bam/68N3R.sorted.chr.nodup.filt.bam
