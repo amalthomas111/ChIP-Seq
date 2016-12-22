@@ -1,6 +1,6 @@
 #Author: Thomas
-#Code for differential count-data analysis using DESEQ
-#Inputfile reqd: count-data file (tsv file),mention ouputname
+#Code for differential count-data analysis using DESEQ (no replicate case)
+#Inputfile reqd: count-data file (tsv file),mention outputname
 suppressPackageStartupMessages({
 require(DESeq)
 require(GenomicRanges)
