@@ -1,0 +1,11 @@
+SampleID,Tissue,Factor,Condition,Peaks,PeakCaller,bamReads
+07H,Brx07,atac,NoTropism,../peaks/q1e5/consensus/07H_consist.bed,bed,../bams/07H.sorted.chr.nodup.filt.bam
+07HR,Brx07,atac,NoTropism,../peaks/q1e5/consensus/07HR_consist.bed,bed,../bams/07HR.sorted.chr.nodup.filt.bam
+42BrIc-74_77-1,Brx42,atac,Tropism,../peaks/q1e5/42BrIc-74:77-1_peaks.narrowPeak.blacklistcleared,bed,../bams/42BrIc-74_77-1.sorted.chr.nodup.filt.bam
+42BrPr-66-1,Brx42,atac,Tropism,../peaks/q1e5/42BrPr-66-1_peaks.narrowPeak.blacklistcleared,bed,../bams/42BrPr-66-1.sorted.chr.nodup.filt.bam
+42Ovry-73-1,Brx42,atac,Tropism,../peaks/q1e5/42Ovry-73-1_peaks.narrowPeak.blacklistcleared,bed,../bams/42Ovry-73-1.sorted.chr.nodup.filt.bam
+50Bone-83-2,Brx50,atac,Tropism,../peaks/q1e5/50Bone-83-2_peaks.narrowPeak.blacklistcleared,bed,../bams/50Bone-83-2.sorted.chr.nodup.filt.bam
+50Brai-83-2,Brx50,atac,Tropism,../peaks/q1e5/50Brai-83-2_peaks.narrowPeak.blacklistcleared,bed,../bams/50Brai-83-2.sorted.chr.nodup.filt.bam
+50Brai-84-2,Brx50,atac,Tropism,../peaks/q1e5/50Brai-84-2_peaks.narrowPeak.blacklistcleared,bed,../bams/50Brai-84-2.sorted.chr.nodup.filt.bam
+68H,Brx68,atac,NoTropism,../peaks/q1e5/consensus/68H_consist.bed,bed,../bams/68H.sorted.chr.nodup.filt.bam
+68HR,Brx68,atac,NoTropism,../peaks/q1e5/consensus/68HR_consist.bed,bed,../bams/68HR.sorted.chr.nodup.filt.bam
