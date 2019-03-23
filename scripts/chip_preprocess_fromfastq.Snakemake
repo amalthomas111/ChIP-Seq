@@ -1,0 +1,399 @@
+import os,glob,builtins
+
+configfile: 'chip_config.yaml'
+SAMPLES=[]
+case=[]
+control=[]
+case_control_dict={}
+peaks_default=[]
+peaks_strict=[]
+peaks_default_clear=[]
+peaks_strict_clear=[]
+bb_default=[]
+bb_strict=[]
+bb_compare=[]
+broad=[]
+broad_dict={}
+broad_macspeaks=[]
+broad_macspeaks_bb=[]
+broad_rsegpeaks=[]
+broad_rsegbw=[]
+broad_rsegbb=[]
+diffuse_peaks=["h3k36me3","h3k79me2","h3k27me3","h3k9me3","h3k9me1"]
+
+for line in open("list.txt"):
+        if line!="" and line!="\n":
+                elements=line.strip().split(",")
+                SAMPLES.append(elements[0])
+                try:
+                        if elements[1] != "" and elements[1] != " ":
+                                if elements[1].lower().strip() !="input":
+                                        case.append(elements[0])
+                                        case_control_dict[elements[0]]=elements[1]
+                                        if any(x in elements[0].lower() for x in diffuse_peaks):
+                                                broad.append(elements[0])
+                                                broad_dict[elements[0]]=elements[1]
+                                if elements[1].lower().strip() == "input":
+                                        control.append(elements[0])
+                except IndexError:
+                        print("No input chip available")
+
+if len(case_control_dict.keys()) > 0:
+        for key in case_control_dict.keys():
+                name=key+"_vs_"+case_control_dict[key]
+                peaks_default.append("peaks/default/"+name+"_peaks.narrowPeak")
+                peaks_strict.append("peaks/q1e5/"+name+"_peaks.narrowPeak")
+                peaks_default_clear.append("peaks/default/"+name+"_peaks.narrowPeak.cleared")
+                peaks_strict_clear.append("peaks/q1e5/"+name+"_peaks.narrowPeak.cleared")
+                bb_default.append("tracks/default/"+name+".bb")
+                bb_strict.append("tracks/q1e5/"+name+".bb")
+                bb_compare.append("tracks/log2/"+name+".bw")
+
+if len(broad) > 0 :
+        for key in broad_dict.keys():
+                name=key+"_vs_"+broad_dict[key]
+                broad_macspeaks.append("peaks/broad/"+name+"_peaks.broadPeak")
+                broad_rsegpeaks.append("peaks/rseg/"+key+"_B50.bed")
+                broad_macspeaks_bb.append("tracks/broad/"+name+".broad.bb")
+                broad_rsegbb.append("tracks/rseg/"+key+"_B50.bb")
+                broad_rsegbw.append("tracks/rseg/"+key+".posterior_B50.bw")
+
+
+print(SAMPLES)
+#print("\npeak list:\n",peaks_default)
+
+def return_bowtie1index(wildcards):
+        if config["genome"]=="hg19":
+                return(config["hg19_bowtie1_index"])
+        elif config["genome"]=="mm10":
+                return(config["mm10_bowtie1_index"])
+        elif config["genome"]=="hg38":
+                return(config["hg38_bowtie1_index"])
+def get_chrom_size(wildcards):
+        if config["genome"]=="hg19":
+                return(config["hg19_sizes"])
+        elif config["genome"]=="mm10":
+                return(config["mm10_sizes"])
+        elif config["genome"]=="hg38":
+                return(config["hg38_sizes"])
+def get_blacklist(wildcards):
+        if config["genome"]=="hg19":
+                return(config["hg19_blacklist"])
+        elif config["genome"]=="mm10":
+                return(config["mm10_blacklist"])
+        elif config["genome"]=="hg38":
+                return(config["hg38_blacklist"])
+def get_rseg_genomesizes(wildcards):
+        if config["genome"]=="hg19":
+                return(config["rseg_hg19_sizes"])
+        elif config["genome"]=="mm10":
+                return(config["rseg_mm10_sizes"])
+        elif config["genome"]=="hg38":
+                return(config["rseg_hg38_sizes"])
+def get_deadzones(wildcards):
+        if config["genome"]=="hg19":
+                return(config["hg19_deadzones"])
+        elif config["genome"]=="mm10":
+                return(config["mm10_deadzones"])
+        elif config["genome"]=="hg38":
+                return(config["hg38_deadzones"])
+
+rule all:
+        input:
+                expand('bams/{sample}.sorted.bam',sample=SAMPLES),
+                expand('bams/{sample}.sorted.nodup.bam',sample=SAMPLES),
+                expand("beds/{sample}.sorted.bed",sample=SAMPLES),
+                expand("quality/{sample}_fastqc.html",sample=SAMPLES),
+                expand("rawreads/{sample}_trimmed.fq.gz",sample=SAMPLES),
+                expand('fragmentlength/fraglen_{sample}',sample=SAMPLES),
+                expand('tracks/deeptools/{sample}.bw',sample=SAMPLES),
+                peaks_default,peaks_strict, peaks_default_clear,
+                peaks_strict_clear,bb_default,bb_strict, bb_compare,
+                broad_macspeaks,broad_rsegpeaks,broad_macspeaks_bb,
+                broad_rsegbb,broad_rsegbw
+
+rule fastqc:
+        input:
+                mate1 = "rawreads/{sample}.fastq.gz"
+        output:
+                output1 = "quality/{sample}_fastqc.html",
+
+        message:
+                "fastqc for {wildcards.sample}."
+        params:
+                "quality"
+        log:
+                "logs/{sample}.fastqc.log"
+        shell:
+                """
+                fastqc {input.mate1} -o {params} 2> {log}
+                """
+
+
+rule trim_galore:
+        input:
+                "rawreads/{sample}.fastq.gz"
+        output:
+                "rawreads/{sample}_trimmed.fq.gz"
+        params:
+                "rawreads"
+        shell:
+                """
+                trim_galore --quality 20 --length 15 {input} \
+ --output_dir {params}
+                """
+rule bowtie1_mapping:
+        input:
+                "rawreads/{sample}_trimmed.fq.gz",
+        params:
+                index = return_bowtie1index
+        output:
+                bam1 = protected("bams/{sample}.sorted.bam"),
+                bam2 = "bams/{sample}.sorted.nodup.bam"
+        log:
+                "logs/{sample}.bowtie1.log"
+        threads:4
+        shell:
+                """
+                bowtie -q -p 4 -m 1 -v 3 --sam --best --strata {params.index} \
+{input}|samtools view -bS -F 4 - |sambamba sort -t 4 \
+--tmpdir={config[tempdir]} -m 18G -o {output.bam1} /dev/stdin >  {log} 2>&1
+                sambamba index -t 4 {output.bam1}
+                sambamba markdup -r -t 4 {output.bam1} --tmpdir \
+{config[tempdir]} {output.bam2}
+                sambamba index -t 4 {output.bam2}
+                """
+rule run_chipQC:
+        input:
+                'bams/{sample}.sorted.nodup.bam'
+        output:
+                'fragmentlength/fraglen_{sample}'
+        params:
+                '{sample}'
+        shell:
+                """
+                source activate R3.4.1
+                Rscript chipQC.R {config[genome]} {params}
+                """
+rule create_track:
+        input:
+                'bams/{sample}.sorted.nodup.bam'
+        output:
+                'tracks/deeptools/{sample}.bw'
+        threads:4
+        shell:
+                """
+                #source activate py2.7
+                bamCoverage -b {input} --normalizeUsing RPKM --binSize 30 \
+                --smoothLength 300 -p 4 --extendReads 150 -o {output}
+
+                """
+rule bigwigcompare:
+        input:
+                case = "tracks/deeptools/{case_id}.bw",
+                control= "tracks/deeptools/{control_id}.bw",
+                blacklist = get_blacklist
+        output:
+                "tracks/log2/{case_id}_vs_{control_id}.bw"
+        threads:4
+        shell:
+                """
+                bigwigCompare --blackListFileName {input.blacklist} --bigwig1 {input.case} \
+                --bigwig2 {input.control} -p 4 --operation log2 -o {output}
+                """
+
+rule call_macs_peaks_default:
+        input:
+                control = 'bams/{control_id}.sorted.nodup.bam',
+                case = 'bams/{case_id}.sorted.nodup.bam'
+        output:
+                peak_file = 'peaks/default/{case_id}_vs_{control_id}_peaks.narrowPeak'
+        log:
+                'logs/macs_default_{case_id}_vs_{control_id}.log'
+        params:
+                prefix = '{case_id}_vs_{control_id}'
+        shell:
+                """
+                source activate py2.7
+                macs2 callpeak --gsize hs -f BAM -t {input.case} \
+ -c {input.control} --outdir peaks/default \
+ --name {params.prefix} --qvalue 0.01 --verbose 3
+                """
+rule call_macs_peaks_strict:
+        input:
+                control = 'bams/{control_id}.sorted.nodup.bam',
+                case = 'bams/{case_id}.sorted.nodup.bam'
+        output:
+                peak_file = 'peaks/q1e5/{case_id}_vs_{control_id}_peaks.narrowPeak'
+        log:
+                'logs/macs_strict_{case_id}_vs_{control_id}.log'
+        params:
+                prefix = '{case_id}_vs_{control_id}'
+        shell:
+                """
+                source activate py2.7
+                macs2 callpeak -g hs -f BAM -t {input.case} -c {input.control}\
+ --outdir peaks/q1e5 --name {params.prefix} --qvalue 1e-5 --verbose 3
+                """
+rule remove_blacklist:
+        input:
+                peak1 = 'peaks/default/{case_id}_vs_{control_id}_peaks.narrowPeak',
+                peak2 = 'peaks/q1e5/{case_id}_vs_{control_id}_peaks.narrowPeak',
+                blacklist = get_blacklist
+        output:
+                peak1 = 'peaks/default/{case_id}_vs_{control_id}_peaks.narrowPeak.cleared',
+                peak2 = 'peaks/q1e5/{case_id}_vs_{control_id}_peaks.narrowPeak.cleared'
+        shell:
+                """
+                intersectBed -v -a {input.peak1} -b {input.blacklist} \
+ > {output.peak1}
+                intersectBed -v -a {input.peak2} -b {input.blacklist} \
+ > {output.peak2}
+                """
+rule make_peak_track:
+        input:
+                peak1 = 'peaks/default/{case_id}_vs_{control_id}_peaks.narrowPeak.cleared',
+                peak2 = 'peaks/q1e5/{case_id}_vs_{control_id}_peaks.narrowPeak.cleared',
+                chrom_size = get_chrom_size
+        output:
+                bigbed1 = 'tracks/default/{case_id}_vs_{control_id}.bb',
+                bigbed2 = 'tracks/q1e5/{case_id}_vs_{control_id}.bb'
+        params:
+                temp1 = 'tracks/default/{case_id}_vs_{control_id}.temp',
+                temp2 = 'tracks/q1e5/{case_id}_vs_{control_id}.temp'
+        shell:
+                """
+                awk '{{OFS="\t"; if(length($1)<=5){{print $1, $2, $3}} }}' {input.peak1} \
+| sort -k 1,1 -k 2,2n > {params.temp1}
+                bedToBigBed {params.temp1} {input.chrom_size} {output.bigbed1}
+                awk '{{OFS="\t"; if(length($1)<=5){{print $1, $2, $3}} }}' {input.peak2} \
+| sort -k 1,1 -k 2,2n > {params.temp2}
+		bedToBigBed {params.temp1} {input.chrom_size} {output.bigbed1}
+                bedToBigBed {params.temp2} {input.chrom_size} {output.bigbed2}
+                rm {params.temp1}
+                rm {params.temp2}
+                """
+rule bamtobed:
+        input:
+                'bams/{sample}.sorted.nodup.bam'
+        output:
+                temp('beds/{sample}.bed')
+        params:
+                '{sample}'
+        shell:
+                """
+                bamToBed -i {input} > {output}
+                """
+rule sortbed:
+        input:
+                "beds/{sample}.bed"
+        output:
+                "beds/{sample}.sorted.bed"
+        threads:1
+        shell:
+                """
+                export LC_ALL=C
+                sort  -k1,1 -k2,2n -k3,3n -k6,6 {input} > {output}
+                """
+
+rule run_rseg50:
+        input:
+                bed = 'beds/{sample}.sorted.bed',
+                genomesize = get_rseg_genomesizes,
+                deadzone = get_deadzones
+        output:
+                out = "peaks/rseg/{sample}_B50.bed",
+                post = "peaks/rseg/{sample}_B50_posterior.txt",
+                bscore = "peaks/rseg/{sample}_B50_bscore.txt",
+                bound = "peaks/rseg/{sample}_B50_boundary.txt"
+        message:
+                "rseg50 for {wildcards.sample}"
+        log:
+                "logs/{sample}_rseg50.log"
+        shell:
+                """
+                rseg -c {input.genomesize} -o {output.out} -b 50 -score \
+                {output.post} -boundary-score {output.bscore} -boundary \
+                {output.bound} -d {input.deadzone} -P -v  {input.bed}
+                """
+rule broad_macs:
+        input:
+                case='beds/{case}.bed',
+                control='beds/{control}.bed'
+        output:
+                "peaks/broad/{case}_vs_{control}_peaks.broadPeak"
+        params:
+                "{case}_vs_{control}"
+        shell:
+                """
+                source activate py2.7
+                macs2 callpeak --broad --gsize hs -f BED --treatment {input.case} \
+                --control {input.control} --outdir peaks/broad --name {params} \
+                --qvalue 0.01  --verbose 3
+                """
+rule broad_remove_blacklist:
+        input:
+                peak1 = 'peaks/broad/{case}_vs_{control}_peaks.broadPeak',
+                blacklist = get_blacklist
+        output:
+                peak1 = 'peaks/broad/{case}_vs_{control}_peaks.broadPeak.cleared',
+        shell:
+                """
+                intersectBed -v -a {input.peak1} -b {input.blacklist} \
+ > {output.peak1}
+                """
+rule broad_bb:
+        input:
+                peak1 = 'peaks/broad/{case}_vs_{control}_peaks.broadPeak.cleared',
+                chrom_size = get_chrom_size
+        output:
+                bigbed1 = 'tracks/broad/{case}_vs_{control}.broad.bb'
+        params:
+                temp1 = 'tracks/broad/{case}_vs_{control}.temp',
+        shell:
+                """
+                awk '{{OFS="\t"; if(length($1)<=5){{print $1, $2, $3}} }}' {input.peak1} \
+| sort -k 1,1 -k 2,2n > {params.temp1}
+                bedToBigBed {params.temp1} {input.chrom_size} {output.bigbed1}
+                rm {params.temp1}
+                """
+
+rule rseg_track50:
+        input:
+                p='peaks/rseg/{sample}_B50_posterior.txt',
+                chrom=get_chrom_size
+        output:
+                sorted = 'tracks/rseg/{sample}_B50_posterior.sorted.txt',
+                bw = 'tracks/rseg/{sample}.posterior_B50.bw'
+        shell:
+                """
+                bedtools slop -b 0 -i {input.p} -g {input.chrom}| sort -k1,1 -k2,2n > {output.sorted}
+                bedGraphToBigWig {output.sorted} {input.chrom} {output.bw}
+                """
+rule rseg_remove_blacklist:
+        input:
+                peak1 = 'peaks/rseg/{sample}_B50.bed',
+                blacklist = get_blacklist,
+                chrom=get_chrom_size
+        output:
+                peak1 = 'peaks/rseg/{sample}_B50.bed.cleared',
+        shell:
+                """
+                bedtools slop -b 0 -i {input.peak1} -g {input.chrom}|intersectBed -v -a stdin -b {input.blacklist} \
+ > {output.peak1}
+                """
+rule rseg_bb:
+        input:
+                peak1 = 'peaks/rseg/{sample}_B50.bed.cleared',
+                chrom_size = get_chrom_size
+        output:
+                bigbed1 = 'tracks/rseg/{sample}_B50.bb'
+        params:
+                temp1 = 'tracks/rseg/{sample}.temp',
+        shell:
+                """
+                awk '{{OFS="\t"; if(length($1)<=5){{print $1, $2, $3}} }}' {input.peak1} \
+| sort -k 1,1 -k 2,2n > {params.temp1}
+                bedToBigBed {params.temp1} {input.chrom_size} {output.bigbed1}
+                rm {params.temp1}
+                """

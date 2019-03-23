@@ -1,0 +1,19 @@
+__default__:
+    p : "cmb"
+    time : "200:00:00"
+    mem : "8000MB"
+    ntasks : "1"
+
+bowtie1_mapping:
+    mem : "20000MB"
+    ntasks : "4"
+create_track:
+    mem : "15000MB"
+    ntasks : "4"
+bigwigcompare:
+    mem : "16000MB"
+    ntasks : "4"
+call_macs_peaks_default:
+    mem : "20000MB"
+run_rseg50:
+    mem : "25000MB"
